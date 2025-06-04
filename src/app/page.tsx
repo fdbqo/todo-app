@@ -1,10 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DragDropContext, DropResult } from "@hello-pangea/dnd";
 import Column from "@/components/Column";
 
-type Task = { id: string; title: string };
+type Status = "todo" | "inProgress" | "done";
+
+interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  status: Status;
+}
 
 export default function DashboardPage() {
   const [columns, setColumns] = useState<{
@@ -13,70 +20,177 @@ export default function DashboardPage() {
     done: Task[];
   }>({ todo: [], inProgress: [], done: [] });
 
-  function onDragEnd(result: DropResult) {
+  async function fetchTasks() {
+    const res = await fetch("/api/todos");
+    const all: Array<{ id: number; title: string; description?: string; status: Status }> =
+      await res.json();
+
+    const asString: Task[] = all.map((t) => ({
+      id: String(t.id),
+      title: t.title,
+      description: t.description || "",
+      status: t.status,
+    }));
+
+    setColumns({
+      todo: asString.filter((t) => t.status === "todo"),
+      inProgress: asString.filter((t) => t.status === "inProgress"),
+      done: asString.filter((t) => t.status === "done"),
+    });
+  }
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  async function handleMarkInProgress(id: string): Promise<void> {
+    setColumns((prev) => {
+      const task = prev.todo.find((t) => t.id === id);
+      if (!task) return prev;
+
+      const newTodo = prev.todo.filter((t) => t.id !== id);
+      task.status = "inProgress";
+      const newInProgress = [task, ...prev.inProgress];
+      return { ...prev, todo: newTodo, inProgress: newInProgress, done: prev.done };
+    });
+
+    fetch(`/api/todos/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "inProgress" }),
+    });
+  }
+
+  async function handleMarkDone(id: string): Promise<void> {
+    setColumns((prev) => {
+      let task = prev.todo.find((t) => t.id === id);
+      let newTodo = prev.todo;
+      let newInProgress = prev.inProgress;
+
+      if (task) {
+        newTodo = prev.todo.filter((t) => t.id !== id);
+      } else {
+        task = prev.inProgress.find((t) => t.id === id);
+        newInProgress = prev.inProgress.filter((t) => t.id !== id);
+      }
+
+      if (!task) return prev;
+      task.status = "done";
+      const newDone = [task, ...prev.done];
+      return { todo: newTodo, inProgress: newInProgress, done: newDone };
+    });
+
+    fetch(`/api/todos/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "done" }),
+    });
+  }
+
+  async function handleDelete(id: string): Promise<void> {
+    setColumns((prev) => ({
+      todo: prev.todo.filter((t) => t.id !== id),
+      inProgress: prev.inProgress.filter((t) => t.id !== id),
+      done: prev.done.filter((t) => t.id !== id),
+    }));
+
+    fetch(`/api/todos/${id}`, { method: "DELETE" });
+  }
+
+  function onDragEnd(result: DropResult): void {
     const { source, destination } = result;
     if (!destination) return;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
-    const srcColKey = source.droppableId as keyof typeof columns;
-    const destColKey = destination.droppableId as keyof typeof columns;
-    const srcTasks = Array.from(columns[srcColKey]);
-    const [moved] = srcTasks.splice(source.index, 1);
+    const srcCol = source.droppableId as Status;
+    const destCol = destination.droppableId as Status;
 
-    if (srcColKey === destColKey) {
-      srcTasks.splice(destination.index, 0, moved);
-      setColumns(prev => ({ ...prev, [srcColKey]: srcTasks }));
-    } else {
-      const destTasks = Array.from(columns[destColKey]);
+    if (srcCol === destCol) {
+      if (source.index === destination.index) return;
+
+      setColumns((prev) => {
+        const updated = Array.from(prev[srcCol]);
+        const [moved] = updated.splice(source.index, 1);
+        updated.splice(destination.index, 0, moved);
+        return { ...prev, [srcCol]: updated };
+      });
+
+      const movedId = columns[srcCol][source.index]?.id;
+      if (movedId) {
+        fetch(`/api/todos/${movedId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: destCol }),
+        });
+      }
+      return;
+    }
+
+    setColumns((prev) => {
+      const sourceTasks = Array.from(prev[srcCol]);
+      const [moved] = sourceTasks.splice(source.index, 1);
+      moved.status = destCol;
+
+      const destTasks = Array.from(prev[destCol]);
       destTasks.splice(destination.index, 0, moved);
-      setColumns(prev => ({ ...prev, [srcColKey]: srcTasks, [destColKey]: destTasks }));
+
+      return { ...prev, [srcCol]: sourceTasks, [destCol]: destTasks };
+    });
+
+    const movedId = columns[srcCol][source.index]?.id;
+    if (movedId) {
+      fetch(`/api/todos/${movedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: destCol }),
+      });
     }
   }
 
-  function handleAddTask(column: "todo" | "inProgress" | "done") {
-  }
-
-  function handleMarkInProgress(id: string) {
-  }
-
-  function handleMarkDone(id: string) {
-  }
+  // Compute incomplete = todo + inProgress, complete = done
+  const incompleteCount = columns.todo.length + columns.inProgress.length;
+  const completeCount = columns.done.length;
 
   return (
-    <main className="flex flex-col h-screen bg-gray-50">
-      <header className="flex items-center justify-between p-8">
-        <h1 className="text-3xl font-bold text-gray-800">My Kanban Board</h1>
-        <button className="rounded bg-blue-600 px-4 py-2 text-white">+ Add New Board</button>
+    <main className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+      <header className="flex flex-col items-center justify-center py-4">
+        <h1 className="text-2xl font-bold text-gray-800">Todo App</h1>
+        <p className="mt-1 text-sm text-gray-600">
+          Incomplete: {incompleteCount} | Complete: {completeCount}
+        </p>
       </header>
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="flex flex-grow justify-center space-x-6 overflow-x-auto px-8 pb-8">
-          <Column
-            title="To Do"
-            droppableId="todo"
-            status="todo"
-            tasks={columns.todo}
-            onMarkInProgress={handleMarkInProgress}
-            onMarkDone={handleMarkDone}
-            onAddTask={() => handleAddTask("todo")}
-          />
-          <Column
-            title="In Progress"
-            droppableId="inProgress"
-            status="inProgress"
-            tasks={columns.inProgress}
-            onMarkDone={handleMarkDone}
-            onAddTask={() => handleAddTask("inProgress")}
-          />
-          <Column
-            title="Done"
-            droppableId="done"
-            status="done"
-            tasks={columns.done}
-            onMarkDone={handleMarkDone}
-            onAddTask={() => handleAddTask("done")}
-          />
-        </div>
-      </DragDropContext>
+      <div className="flex flex-grow justify-center space-x-4 px-4">
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div className="flex flex-grow justify-center space-x-4 overflow-x-auto">
+            <Column
+              title="To Do"
+              droppableId="todo"
+              tasks={columns.todo}
+              onMarkInProgress={handleMarkInProgress}
+              onMarkDone={handleMarkDone}
+              onDelete={handleDelete}
+              onAddSuccess={fetchTasks}
+            />
+            <Column
+              title="In Progress"
+              droppableId="inProgress"
+              tasks={columns.inProgress}
+              onMarkInProgress={handleMarkInProgress}
+              onMarkDone={handleMarkDone}
+              onDelete={handleDelete}
+              onAddSuccess={fetchTasks}
+            />
+            <Column
+              title="Done"
+              droppableId="done"
+              tasks={columns.done}
+              onMarkInProgress={handleMarkInProgress}
+              onMarkDone={handleMarkDone}
+              onDelete={handleDelete}
+              onAddSuccess={fetchTasks}
+            />
+          </div>
+        </DragDropContext>
+      </div>
     </main>
   );
 }
