@@ -18,6 +18,8 @@ interface Task {
   title: string;
   description?: string;
   status: Status;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface ColumnProps {
@@ -28,6 +30,7 @@ interface ColumnProps {
   onMarkDone: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onAddSuccess: () => void;
+  onEditSuccess: () => void;
 }
 
 export default function Column({
@@ -38,6 +41,7 @@ export default function Column({
   onMarkDone,
   onDelete,
   onAddSuccess,
+  onEditSuccess,
 }: ColumnProps) {
   return (
     <Droppable droppableId={droppableId}>
@@ -45,11 +49,12 @@ export default function Column({
         <Card
           ref={provided.innerRef}
           {...provided.droppableProps}
-          className="flex flex-col flex-shrink-0 w-80 bg-white shadow h-[85vh]"
+          className="flex flex-col w-80 bg-white shadow h-full"
         >
-          <CardHeader className="border-b">
+          <CardHeader className="border-b py-2 px-4 flex-shrink-0">
             <CardTitle className="text-lg font-semibold">{title}</CardTitle>
           </CardHeader>
+
           <CardContent className="flex-grow overflow-y-auto p-4">
             <div className="space-y-4">
               {tasks.map((task, index) => (
@@ -60,12 +65,14 @@ export default function Column({
                   onMarkInProgress={onMarkInProgress}
                   onMarkDone={onMarkDone}
                   onDelete={onDelete}
+                  onEditSuccess={onEditSuccess}
                 />
               ))}
             </div>
             {provided.placeholder}
           </CardContent>
-          <CardFooter className="border-t p-2">
+
+          <CardFooter className="border-t p-2 flex-shrink-0">
             <AddTaskDialog
               column={droppableId}
               onSuccess={onAddSuccess}

@@ -11,6 +11,8 @@ interface Task {
   title: string;
   description?: string;
   status: Status;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export default function DashboardPage() {
@@ -22,14 +24,22 @@ export default function DashboardPage() {
 
   async function fetchTasks() {
     const res = await fetch("/api/todos");
-    const all: Array<{ id: number; title: string; description?: string; status: Status }> =
-      await res.json();
+    const all: Array<{
+      id: number;
+      title: string;
+      description?: string;
+      status: Status;
+      created_at: string;
+      updated_at: string;
+    }> = await res.json();
 
     const asString: Task[] = all.map((t) => ({
       id: String(t.id),
       title: t.title,
       description: t.description || "",
       status: t.status,
+      createdAt: t.created_at,
+      updatedAt: t.updated_at,
     }));
 
     setColumns({
@@ -47,13 +57,12 @@ export default function DashboardPage() {
     setColumns((prev) => {
       const task = prev.todo.find((t) => t.id === id);
       if (!task) return prev;
-
       const newTodo = prev.todo.filter((t) => t.id !== id);
       task.status = "inProgress";
+      task.updatedAt = new Date().toISOString();
       const newInProgress = [task, ...prev.inProgress];
       return { ...prev, todo: newTodo, inProgress: newInProgress, done: prev.done };
     });
-
     fetch(`/api/todos/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -66,20 +75,18 @@ export default function DashboardPage() {
       let task = prev.todo.find((t) => t.id === id);
       let newTodo = prev.todo;
       let newInProgress = prev.inProgress;
-
       if (task) {
         newTodo = prev.todo.filter((t) => t.id !== id);
       } else {
         task = prev.inProgress.find((t) => t.id === id);
         newInProgress = prev.inProgress.filter((t) => t.id !== id);
       }
-
       if (!task) return prev;
       task.status = "done";
+      task.updatedAt = new Date().toISOString();
       const newDone = [task, ...prev.done];
       return { todo: newTodo, inProgress: newInProgress, done: newDone };
     });
-
     fetch(`/api/todos/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -93,27 +100,23 @@ export default function DashboardPage() {
       inProgress: prev.inProgress.filter((t) => t.id !== id),
       done: prev.done.filter((t) => t.id !== id),
     }));
-
     fetch(`/api/todos/${id}`, { method: "DELETE" });
   }
 
   function onDragEnd(result: DropResult): void {
     const { source, destination } = result;
     if (!destination) return;
-
     const srcCol = source.droppableId as Status;
     const destCol = destination.droppableId as Status;
 
     if (srcCol === destCol) {
       if (source.index === destination.index) return;
-
       setColumns((prev) => {
         const updated = Array.from(prev[srcCol]);
         const [moved] = updated.splice(source.index, 1);
         updated.splice(destination.index, 0, moved);
         return { ...prev, [srcCol]: updated };
       });
-
       const movedId = columns[srcCol][source.index]?.id;
       if (movedId) {
         fetch(`/api/todos/${movedId}`, {
@@ -129,13 +132,11 @@ export default function DashboardPage() {
       const sourceTasks = Array.from(prev[srcCol]);
       const [moved] = sourceTasks.splice(source.index, 1);
       moved.status = destCol;
-
+      moved.updatedAt = new Date().toISOString();
       const destTasks = Array.from(prev[destCol]);
       destTasks.splice(destination.index, 0, moved);
-
       return { ...prev, [srcCol]: sourceTasks, [destCol]: destTasks };
     });
-
     const movedId = columns[srcCol][source.index]?.id;
     if (movedId) {
       fetch(`/api/todos/${movedId}`, {
@@ -146,19 +147,19 @@ export default function DashboardPage() {
     }
   }
 
-  // Compute incomplete = todo + inProgress, complete = done
   const incompleteCount = columns.todo.length + columns.inProgress.length;
   const completeCount = columns.done.length;
 
   return (
     <main className="flex flex-col h-screen bg-gray-50 overflow-hidden">
-      <header className="flex flex-col items-center justify-center py-4">
+      <header className="flex flex-col items-center justify-center h-16">
         <h1 className="text-2xl font-bold text-gray-800">Todo App</h1>
         <p className="mt-1 text-sm text-gray-600">
           Incomplete: {incompleteCount} | Complete: {completeCount}
         </p>
       </header>
-      <div className="flex flex-grow justify-center space-x-4 px-4">
+
+      <div className="flex flex-grow overflow-hidden px-4 pb-4">
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex flex-grow justify-center space-x-4 overflow-x-auto">
             <Column
@@ -169,6 +170,7 @@ export default function DashboardPage() {
               onMarkDone={handleMarkDone}
               onDelete={handleDelete}
               onAddSuccess={fetchTasks}
+              onEditSuccess={fetchTasks}
             />
             <Column
               title="In Progress"
@@ -178,6 +180,7 @@ export default function DashboardPage() {
               onMarkDone={handleMarkDone}
               onDelete={handleDelete}
               onAddSuccess={fetchTasks}
+              onEditSuccess={fetchTasks}
             />
             <Column
               title="Done"
@@ -187,6 +190,7 @@ export default function DashboardPage() {
               onMarkDone={handleMarkDone}
               onDelete={handleDelete}
               onAddSuccess={fetchTasks}
+              onEditSuccess={fetchTasks}
             />
           </div>
         </DragDropContext>

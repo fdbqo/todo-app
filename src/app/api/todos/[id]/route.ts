@@ -3,9 +3,8 @@ import { db } from "@/lib/db";
 import { todos } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-// Helper to extract the numeric ID from the URL
+// gets number id from the url so we can work with it
 function extractNumericId(request: NextRequest): number | null {
-  // e.g. /api/todos/15  → ["", "api", "todos", "15"]
   const segments = new URL(request.url).pathname.split("/");
   const idString = segments[segments.length - 1];
   const numericId = parseInt(idString, 10);

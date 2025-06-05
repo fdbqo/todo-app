@@ -42,14 +42,14 @@ export default function AddTaskDialog({
       body: JSON.stringify({
         title: title.trim(),
         description: description.trim(),
-        status: "todo",
+        status: column,
       }),
     });
 
     setIsLoading(false);
     setTitle("");
     setDescription("");
-    setOpen(false);    
+    setOpen(false);
     onSuccess();
   }
 
@@ -87,7 +87,7 @@ export default function AddTaskDialog({
               onClick={() => {
                 setTitle("");
                 setDescription("");
-                setOpen(false);   
+                setOpen(false);
               }}
             >
               Cancel
